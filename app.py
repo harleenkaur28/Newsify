@@ -4,7 +4,8 @@ import json
 from sklearn.metrics.pairwise import cosine_similarity
 from nltk.stem import WordNetLemmatizer
 import streamlit.components.v1 as components
-from streamlit_star_rating import st_star_rating
+import time
+# from streamlit_star_rating import st_star_rating
 
 st.set_page_config(page_title="", layout="wide")
 
@@ -54,50 +55,56 @@ def recommend(user_input):
     
     return recommendations
     
-scroll_js = """
+matrix_js = """
 <script>
-let lastScrollTop = 0; 
-let lastTime = 0;
+consol.log("Hello")
+let startTime = Date.now();
+let lastScrollPos = window.pageYOffset;
+let scrollDistance = 0;
+let scrollCount = 0;
+let clickCount = 0;
 
-function sendScrollSpeed(speed) {
-    console.log("Scroll speed: " + speed + " px/s"); // Log the scroll speed to the console
-    const streamlitContainer = window.parent.document.querySelector('iframe');
-    if (streamlitContainer) {
-        streamlitContainer.dispatchEvent(
-            new CustomEvent("streamlit:customMessage", { detail: { scrollSpeed: speed } })
-        );
-    }
-}
-
-window.addEventListener("scroll", () => {
-    const currentTime = Date.now(); 
-    const currentScrollTop = window.scrollY;
-
-    if (lastTime !== 0) {
-        const distance = Math.abs(currentScrollTop - lastScrollTop);
-        const timeDiff = (currentTime - lastTime) / 1000;
-        const scrollSpeed = distance / timeDiff;
-
-        // Log the scroll speed to the console
-        sendScrollSpeed(scrollSpeed.toFixed(2));
-    }
-
-    lastScrollTop = currentScrollTop;
-    lastTime = currentTime;
+// Track scrolling
+document.addEventListener('scroll', function() {
+    let currentPos = window.pageYOffset;
+    scrollDistance += Math.abs(currentPos - lastScrollPos);
+    lastScrollPos = currentPos;
+    scrollCount++;
 });
+
+// Track clicks
+document.addEventListener('click', function() {
+    clickCount++;
+});
+
+// Send metrics every 2 seconds
+setInterval(function() {
+    let currentTime = Date.now();
+    let timeElapsed = (currentTime - startTime) / 1000;
+    let avgScrollSpeed = scrollCount > 0 ? scrollDistance / timeElapsed : 0;
+    
+    // Send to Streamlit
+    window.parent.postMessage({
+        type: 'metrics',
+        scrollSpeed: avgScrollSpeed,
+        clicks: clickCount
+    }, '*');
+}, 2000);
 </script>
 """
+# Dictionary to store stats per search
+search_stats = {}
 
 
 # Function to display JS in Streamlit
-def show_scroll_js():
-    components.html(scroll_js, height=0)
+def metrix():
+    components.html(matrix_js, height=0)
 
 def temp_func():
     print("This is a Rating Check")
 
 def main():
-    show_scroll_js()
+    metrix()
 
     st.title('Newsify - News Recommendation System')
     user_input = st.text_input(label="Search for politics, tech, entertainment and more", value="")
@@ -111,9 +118,16 @@ def main():
                  st.link_button("Read More", rec['link']) 
                  st.subheader(" ")
 
-            stars = st_star_rating("Please rate you experience", maxValue=5, defaultValue=3, key="rating", on_click=temp_func)
+            # stars = st_star_rating("Please rate you experience", maxValue=5, defaultValue=3, key="rating", on_click=temp_func)
         else:
             st.error("Please enter a valid query to get recommendations.")
+    
+    st.markdown("---")
+    col1, col2 = st.columns(2)
+    with col1:
+        st.metric(label="Total Clicks", value="0")
+    with col2:
+        st.metric(label="Average Scroll Speed (px/s)", value="0.00")
 
 if __name__ == "__main__":
     main()
