@@ -4,24 +4,28 @@ import json
 import os
 from sklearn.metrics.pairwise import cosine_similarity
 from nltk.stem import WordNetLemmatizer
-import streamlit.components.v1 as components
 from datetime import datetime
+from nltk.tokenize import RegexpTokenizer
 st.set_page_config(page_title="", layout="wide")
+from sentence_transformers import SentenceTransformer
+
 
 lemmatizer = WordNetLemmatizer()
 vectors= joblib.load('vectors.pkl')
 vectorizer=joblib.load('vectorizer.pkl')
+model = SentenceTransformer('sbert_model')
+embeddings= joblib.load('embeddings.pkl')
 
 data = []
+
 with open('News_Category_Dataset_v3.json', 'r') as f:
     for line in f:
         data.append(json.loads(line))   
 
-def lemmatize(text):
-    y=[]
-    for i in text.split():
-        y.append(lemmatizer.lemmatize(i,  pos='v'))
-    return " ".join(y)
+def to_lower(text):
+    words = text.split(" ")  
+    words = [word.lower() for word in words]  
+    return " ".join(words)  
 
 def fetch_headline(index):
     headline= data[index]['headline']
@@ -43,17 +47,19 @@ def classify_similarity(similarity_score):
     else:
         return "Bad"
 
-def recommend(user_input):
-    user_input = lemmatize(user_input)
-    user_vector = vectorizer.transform([user_input])
-    similarity_scores = cosine_similarity(user_vector, vectors)
+
+def recommend_sbert(user_input):
+
+    user_input= to_lower(user_input)
+    user_vector = model.encode([user_input])
+
+    similarity_scores = cosine_similarity(user_vector, embeddings).flatten()
+    top_indices = similarity_scores.argsort()[-10:][::-1]
     total_similarity=0
-    top_indices = similarity_scores.argsort()[0][-10:][::-1]  # Top 10 results
-    
     recommendations = []
     
     for index in top_indices:
-        similarity_score = similarity_scores[0][index]  
+        similarity_score = similarity_scores[index]  
         classification = classify_similarity(similarity_score)
         
         recommendation = {
@@ -70,7 +76,7 @@ def recommend(user_input):
     avg_classification = classify_similarity(avg_similarity)
     
     return recommendations, avg_classification
- 
+    
 def main():
     st.title('Newsify - News Recommendation System')
     
@@ -87,14 +93,13 @@ def main():
     
     if st.button('Find Recommendations'):
         if user_input.strip():
-            recommendations, avg_classification = recommend(user_input)
+            recommendations, avg_classification = recommend_sbert(user_input)
             st.write("Here are the top 10 recommended news articles based on your input:")
             
             for rec in recommendations:
                 st.write(f"Category: {rec['category']}")
                 st.subheader(f"{rec['headline']}")
                 st.link_button("Read More", rec['link'])
-                st.write(rec['classification'])
                 st.subheader(" ")
             
             # Store the query and classification in session state
